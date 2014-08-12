@@ -5,13 +5,13 @@ import java.net.URI
 import org.scalatest.FlatSpec
 
 import koncept.http.server.exchange.HttpExchangeImpl
+import koncept.http.server.ConfigurationOption
 import koncept.http.web.RequestContextMutator
 import koncept.http.web.context.RequestContext
+import scala.collection.JavaConversions._
 
 class InboundFilterTest extends FlatSpec {
 
- 
-  
   "A UrlFilter(/)" should "match the root url" in {
     assert(accepts("/", UrlFilter("/")))
   }
@@ -52,11 +52,8 @@ class InboundFilterTest extends FlatSpec {
 
   
   def accepts(url: String, filter: UrlFilter): Boolean = {
-    var exchange = new HttpExchangeImpl(null, null, null, "HTTP/0.9", "GET", new URI(url), null, null) //{
-//      override def getRequestURI(): URI = {
-//        return new URI(url)
-//      }
-//    }
+    val exchangeOptions: Map[ConfigurationOption, String] = Map((HttpExchangeImpl.ATTRIBUTE_SCOPE -> "exchange"))
+    var exchange = new HttpExchangeImpl(null, null, null, "HTTP/0.9", "GET", new URI(url), null, exchangeOptions)
     var rc = new RequestContext(exchange, null, null)
     
     filter.accepts(rc, new RequestContextMutator(url))

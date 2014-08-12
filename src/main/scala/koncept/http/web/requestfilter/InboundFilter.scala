@@ -84,14 +84,14 @@ case class StaticUrlFragmentFilter(fragment: String) extends UrlFramentFilter {
     }
   }
 }
-case class AnyUrl extends UrlFramentFilter {
+case class AnyUrl() extends UrlFramentFilter {
   def accepts(onAccept: RequestContextMutator): Boolean = {
     onAccept.addParameter("**", onAccept.url)
     onAccept.url = ""
     true
   }
 }
-case class AnyUrlFragment extends UrlFramentFilter {
+case class AnyUrlFragment() extends UrlFramentFilter {
   def accepts(onAccept: RequestContextMutator): Boolean = {
     val fragment = head(onAccept.url)
     //    onAccept.url = onAccept.url.substring(fragment.length())
