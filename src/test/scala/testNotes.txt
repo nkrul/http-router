@@ -1,0 +1,17 @@
+
+
+
+http://www.scalatest.org/download
+
+D:\workspaces\pw-safe-trunk\pw-parent\pw-web\testLib
+
+
+group id: org.scalatest
+artifact id: scalatest_2.10 (for Scala 2.10.0+) or scalatest_2.9.0 (for Scala 2.9.0+)
+version: 1.9.1
+
+
+
+http://doc.scalatest.org/1.9.1/
+
+
