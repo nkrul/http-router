@@ -2,15 +2,15 @@ package koncept.http.web
 
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
 import com.sun.net.httpserver.spi.HttpServerProvider
-import koncept.http.server.ConfigurableHttpServer
+
 import koncept.http.web.auth.SessionCookieAuthenticator
+import koncept.http.web.auth.SessionCookieAuthenticatorCleaner
 import koncept.http.web.delegate.DispatcherDelegate
 import koncept.http.web.delegate.FilterDelegate
 import koncept.http.web.httpfilter.ParameterFilter
-import com.sun.net.httpserver.Filter
-import koncept.http.web.auth.SessionCookieAuthenticatorCleaner
-import java.util.concurrent.TimeUnit
 
 trait KonceptRouter[R] {
   def createPerRequestResources(): RequestResources[R]
@@ -36,8 +36,8 @@ trait KonceptRouter[R] {
     outputHandlers += (responseCode -> handler)
   }
   
-  def start(address: InetSocketAddress, backlog:Integer = 0) {
-    val httpServer = HttpServerProvider.provider().createHttpServer(address, backlog)
+  def start(address: InetSocketAddress = new InetSocketAddress(8080), backlog:Integer = 0, provider: HttpServerProvider = HttpServerProvider.provider()) {
+    val httpServer = provider.createHttpServer(address, backlog)
 
     //val config: Map[ConfigurationOption, String] = httpServer match {
     //  case configurable: ConfigurableServer => {
