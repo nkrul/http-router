@@ -1,14 +1,19 @@
 package koncept.http.web.requestfilter
 
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.InetSocketAddress
 import java.net.URI
+
+import scala.collection.JavaConversions.mapAsJavaMap
 
 import org.scalatest.FlatSpec
 
-import koncept.http.server.exchange.HttpExchangeImpl
 import koncept.http.server.ConfigurationOption
+import koncept.http.server.exchange.HttpExchangeImpl
 import koncept.http.web.RequestContextMutator
 import koncept.http.web.context.RequestContext
-import scala.collection.JavaConversions._
+import koncept.io.StreamingSocketConnection
 
 class InboundFilterTest extends FlatSpec {
 
@@ -53,7 +58,16 @@ class InboundFilterTest extends FlatSpec {
   
   def accepts(url: String, filter: UrlFilter): Boolean = {
     val exchangeOptions: Map[ConfigurationOption, String] = Map((HttpExchangeImpl.ATTRIBUTE_SCOPE -> "exchange"))
-    var exchange = new HttpExchangeImpl(null, null, null, "HTTP/0.9", "GET", new URI(url), null, exchangeOptions)
+    val ssc = new StreamingSocketConnection[Any]() {
+	    def localAddress() : InetSocketAddress = null
+	    def remoteAddress() : InetSocketAddress = null
+	    def in() : InputStream = null
+	    def out() : OutputStream = null
+	    def setWriteTimeout(writeTimeout: Long) {}
+	    def setReadTimeout(readTimeout: Long) {}
+	    def close() {}
+    }
+    var exchange = new HttpExchangeImpl(ssc, "HTTP/0.9", "GET", new URI(url), null, exchangeOptions)
     var rc = new RequestContext(exchange, null, null)
     
     filter.accepts(rc, new RequestContextMutator(url))
