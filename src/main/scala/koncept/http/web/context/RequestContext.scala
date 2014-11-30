@@ -6,22 +6,38 @@ import koncept.http.web.auth.SessionCookieAuthenticator
 import koncept.http.web.renderer.RendererFactory
 import koncept.http.web.sessions.Session
 
-class RequestContext[R](val exchange: HttpExchange, requestResources: R, val rendererFactory: RendererFactory) {
-  val url = 
-    if (exchange.getRequestURI.toString.indexOf("?") == -1)
-	  exchange.getRequestURI.toString
-	else
-	  exchange.getRequestURI.toString.substring(0, exchange.getRequestURI.toString.indexOf("?"))
+case class RequestContext[R] (
+    exchange: HttpExchange,
+    resources: R,
+    rendererFactory: RendererFactory,
+    url: String,
+    parameters: Map[String, Any]
+    ) {
+  def this(exchange: HttpExchange, resources: R, rendererFactory: RendererFactory) =
+    this(
+        exchange,
+        resources,
+        rendererFactory,
+        if (exchange.getRequestURI.toString.indexOf("?") == -1) //url
+      	  exchange.getRequestURI.toString
+      	else
+      	  exchange.getRequestURI.toString.substring(0, exchange.getRequestURI.toString.indexOf("?")),
+        Map[String, Any]()
+        )
+   def this(rc: RequestContext[R], kv: Tuple2[String, Any]*) = this(
+       rc.exchange,
+       rc.resources,
+       rc.rendererFactory,
+       rc.url,
+       rc.parameters ++ kv
+       )
+       
+  //TODO change this to a Map[String,String]
   var urlParams = 
     if (exchange.getRequestURI.toString.indexOf("?") == -1)
 	  ""
 	else
 	  exchange.getRequestURI.toString.substring(exchange.getRequestURI.toString.indexOf("?") + 1)
-  
-	  
-  def resources: R = {
-    requestResources
-  }
   
   def httpSession: Option[Session] = {
     val session = exchange.getAttribute("session")
@@ -48,43 +64,4 @@ class RequestContext[R](val exchange: HttpExchange, requestResources: R, val ren
       }
     }
   }
-
-  def parameters: Map[String, Any] = {
-    exchange.getAttribute("parameters").asInstanceOf[Map[String, Any]]
-  }
-  def params: Map[String, String] = {
-    var attr = exchange.getAttribute("params")
-    if (attr != null)
-      attr.asInstanceOf[Map[String, String]]
-    else {
-      buildSimpleParams
-    }
-  }
-
-  def mergeParams(params: Map[String, Any]) {
-    var exchangeParams = parameters
-    for(key <- params.keys) {
-      exchangeParams += (key -> params(key))
-    }
-    exchange.setAttribute("parameters", exchangeParams)
-    buildSimpleParams
-  }
-  def buildSimpleParams(): Map[String, String] = {
-    var params: Map[String, String] = Map()
-    for (key <- parameters.keys) {
-      val value = parameters.get(key).get;
-      value match {
-        case s: String => params += (key -> s)
-        case l: List[String] => params += key -> l(0)
-        case _ => {}
-      }
-    }
-    exchange.setAttribute("params", params) //shorthand params support
-    params
-  }
-  
-//  def parameterFilter: ParameterFilter = {
-//    exchange.getAttribute("parameterFilter").asInstanceOf[ParameterFilter]
-//  }
-
 }

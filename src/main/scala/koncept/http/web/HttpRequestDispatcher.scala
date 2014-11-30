@@ -32,7 +32,7 @@ class HttpRequestDispatcher[R](
   defineHandler(500, new ErrorCodeResponseResponse[R]()) 
 
   def handle(exchange: HttpExchange): Unit = {
-    val rc = new RequestContext[R](exchange, requestResources.requestStart, rendererFactory)
+    var rc = new RequestContext[R](exchange, requestResources.requestStart, rendererFactory)
     var filters: List[RequestEventListener[R]] = Nil
     try {
       var endpointEvent: Option[EndpointEvent[R]] = None
@@ -41,13 +41,13 @@ class HttpRequestDispatcher[R](
 
       for (handler <- handlers) {
         if (endpointEvent.isEmpty) {
-          endpointEvent = handler.applies(rc, new RequestContextMutator(rc.url))
+          endpointEvent = handler.endpoint(rc)
         }
-        filterEvents ++= handler.listeners(rc, new RequestContextMutator(rc.url)); //rcm is thrown away though... hmm
+        filterEvents ++= handler.listeners(rc) //unfortunately, this is still a 'lossy' operation (creates unused rc's)
       }
 
       if (endpointEvent.isDefined)
-        endpointEvent.get.prepare(rc)
+        rc = endpointEvent.get.rc //use the context with updated match info
 
       //apply onstart filters....
       var performRequest = true;
@@ -84,7 +84,6 @@ class HttpRequestDispatcher[R](
     } finally {
       requestResources.requestEnd(rc.resources)
       exchange.getResponseBody().flush()
-      exchange.getResponseBody().close()
       //don't close the exchange, Keep-Alive is used.   (??)
       //this is handled by the http server
       //      exchange close //TODO = need to change this to be a more manual 'forced' close

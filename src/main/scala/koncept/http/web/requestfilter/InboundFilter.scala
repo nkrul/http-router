@@ -1,27 +1,43 @@
 package koncept.http.web.requestfilter
 
 import koncept.http.web.context.RequestContext
-import koncept.http.web.RequestContextMutator
 
-
-//trait InboundFilter[T <: InboundFilter[T]] {
-//  def accepts(rc: RequestContext, onAccept: RequestContextMutator): Boolean
-//  //  def merge[T <: InboundFilter](other: T): InboundFilter
-//  def merge(other: T): T
-//}
-trait InboundFilter {
-  def accepts(rc: RequestContext[_], onAccept: RequestContextMutator): Boolean
-    def merge(other: InboundFilter): InboundFilter
-//  def merge[T <: InboundFilter](other: T): InboundFilter
+trait InboundFilter[R] {
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R]
 }
 
-case class UrlFilter(url: String)
-  extends InboundFilter
-  with UrlParsingFunctions {
-  var fragments: List[UrlFramentFilter] = Nil
-  val urlPath = url
-  var fragment = head(urlPath)
-  var remaining = tail(urlPath)
+abstract class FilterResponse[R] {
+  def acceptable: Boolean
+  def continuable: Boolean
+  def rc: RequestContext[R]
+  def filterArgs: Map[String, Any]
+}
+
+case class AcceptsResponse[R](newContext: RequestContext[R], cache: Map[String, Any]) extends FilterResponse[R] {
+  override def acceptable = {
+    val remaining = cache.get("remainingUrl")
+    if(remaining.isDefined)
+      remaining.get.toString() equals ""
+    else
+      true
+  }
+  override def continuable = true
+  override def rc = newContext
+  override def filterArgs = cache
+}
+
+case class RejectsResponse[R]() extends FilterResponse[R] {
+  override def acceptable: Boolean = false
+  override def continuable = false
+  override def rc = null
+  override def filterArgs = null
+}
+
+
+case class UrlFilter [R] (url: String) extends InboundFilter[R] with UrlParsingFunctions[R] {
+  var fragments: List[InboundFilter[R]] = Nil
+  var fragment = head(url)
+  var remaining = tail(url)
   while (!fragment.equals("")) {
     if (fragment.equals("**")) {
       fragments ::= new AnyUrl()
@@ -37,21 +53,16 @@ case class UrlFilter(url: String)
   }
   fragments = fragments.reverse
 
-  def accepts(rc: RequestContext[_], onAccept: RequestContextMutator): Boolean = {
-    var acceptable = true;
-    for (fragmentFilter <- fragments) {
-      if (acceptable) //TODO: The URL needs to be handled better
-        acceptable = fragmentFilter.accepts(onAccept)
-    }
-    acceptable && onAccept.url.equals("")
-  }
-
-  def merge(other: InboundFilter): UrlFilter = other match {
-    case urlFilter: UrlFilter => new UrlFilter(url + urlFilter.url)
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
+    var result : FilterResponse[R] = AcceptsResponse(rc, cache);
+    for (fragmentFilter <- fragments) 
+      if (result.continuable)
+        result = fragmentFilter.accepts(result.rc, result.filterArgs)
+    result
   }
 }
 
-trait UrlParsingFunctions {
+trait UrlParsingFunctions[R] {
   def head(url: String): String = {
     if (url.startsWith("/"))
       return "/"
@@ -68,65 +79,59 @@ trait UrlParsingFunctions {
       return url.substring(index)
     ""
   }
+  
+  def url(cache: Map[String, Any], url: String) : Map[String, Any] = cache + ("remainingUrl" -> url)
+  
+  def url(rc: RequestContext[R], cache: Map[String, Any]) : String = {
+    val remaining = cache.get("remainingUrl")
+    if(remaining.isDefined)
+      remaining.get.toString()
+    else
+      rc.url
+  }
 }
 
-trait UrlFramentFilter extends UrlParsingFunctions {
-  def accepts(onAccept: RequestContextMutator): Boolean
-
-}
-case class StaticUrlFragmentFilter(fragment: String) extends UrlFramentFilter {
-  def accepts(onAccept: RequestContextMutator): Boolean = {
-    if (head(onAccept.url).equals(fragment)) {
-      onAccept.url = tail(onAccept.url)
-      true
+class StaticUrlFragmentFilter[R](fragment: String) extends InboundFilter[R] with UrlParsingFunctions[R] {
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
+    if (head(url(rc, cache)).equals(fragment)) {
+      val remainingUrl = tail(url(rc, cache))
+      AcceptsResponse(new RequestContext(rc, ("**" -> remainingUrl)), url(cache, remainingUrl))
     } else {
-      false
+      RejectsResponse[R]
     }
   }
 }
-case class AnyUrl() extends UrlFramentFilter {
-  def accepts(onAccept: RequestContextMutator): Boolean = {
-    onAccept.addParameter("**", onAccept.url)
-    onAccept.url = ""
-    true
+class AnyUrl[R]() extends InboundFilter[R] with UrlParsingFunctions[R] {
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
+    AcceptsResponse(new RequestContext(rc, ("**" -> url(rc, cache))), url(cache, ""))
   }
 }
-case class AnyUrlFragment() extends UrlFramentFilter {
-  def accepts(onAccept: RequestContextMutator): Boolean = {
-    val fragment = head(onAccept.url)
-    //    onAccept.url = onAccept.url.substring(fragment.length())
-    onAccept.addParameter("*", fragment)
-    onAccept.url = tail(onAccept.url)
-    true
+class AnyUrlFragment[R]() extends InboundFilter[R] with UrlParsingFunctions[R] {
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
+    val remainingUrl = tail(url(rc, cache))
+    AcceptsResponse(rc, url(cache, remainingUrl))
   }
 }
-case class UrlFragmentAsProperty(propertyName: String) extends UrlFramentFilter {
-  def accepts(onAccept: RequestContextMutator): Boolean = {
-    val fragment = head(onAccept.url)
-    onAccept.addParameter(propertyName, fragment)
-    onAccept.url = tail(onAccept.url)
-    true
+class UrlFragmentAsProperty[R](propertyName: String) extends InboundFilter[R] with UrlParsingFunctions[R] {
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
+    AcceptsResponse(new RequestContext(rc, (propertyName -> head(url(rc, cache)))), url(cache, tail(url(rc, cache))))
   }
 }
 
-class RequestMethodFilter(val methods: Seq[String]) extends InboundFilter {
-  def accepts(rc: RequestContext[_], onAccept: RequestContextMutator): Boolean = {
-    var acceptable = false
+case class RequestMethodFilter[R](methods: String*) extends InboundFilter[R] {
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
     for (method <- methods)
-      acceptable |= rc.exchange.getRequestMethod.equals(method)
-    acceptable
+      if(rc.exchange.getRequestMethod.equals(method))
+        return AcceptsResponse(rc, cache)
+    RejectsResponse[R]
   }
-  def merge(other: InboundFilter): RequestMethodFilter = other match {
-    case requestMethodFilter: RequestMethodFilter => new RequestMethodFilter(methods ++ requestMethodFilter.methods)
-  }
-}
-object RequestMethodFilter {
-  def apply(methods: String*) = new RequestMethodFilter(methods)
 }
 
-case class SessionFilter(sessionExists: Boolean = true) extends InboundFilter {
-  def accepts(rc: RequestContext[_], onAccept: RequestContextMutator) = {
-    rc.httpSession.isDefined == sessionExists
+case class SessionFilter[R](sessionExists: Boolean = true) extends InboundFilter[R] {
+  def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
+    if(rc.httpSession.isDefined == sessionExists)
+      return AcceptsResponse(rc, cache)
+    else
+      RejectsResponse[R]
   }
-  def merge(other: InboundFilter): SessionFilter = throw new UnsupportedOperationException
 }

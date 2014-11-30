@@ -38,14 +38,6 @@ trait KonceptRouter[R] {
   
   def start(address: InetSocketAddress = new InetSocketAddress(8080), backlog:Integer = 0, provider: HttpServerProvider = HttpServerProvider.provider()) {
     val httpServer = provider.createHttpServer(address, backlog)
-
-    //val config: Map[ConfigurationOption, String] = httpServer match {
-    //  case configurable: ConfigurableServer => {
-    //    configurable.getHttpConfiguration
-    //  }
-    //}
-    
-    //config.setExchangeAttributeScoping(LegacyModHttpConfiguration.HttpExchangeAttributeScoping.EXCHANGE)
     
     val dispatcher: HttpRequestDispatcher[R] = new HttpRequestDispatcher(createPerRequestResources)
     for(handler <- handlers)
