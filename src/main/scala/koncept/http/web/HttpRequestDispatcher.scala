@@ -41,9 +41,9 @@ class HttpRequestDispatcher[R](
 
       for (handler <- handlers) {
         if (endpointEvent.isEmpty) {
-          endpointEvent = handler.endpoint(rc)
+          endpointEvent = handler.endpointEvent(rc)
         }
-        filterEvents ++= handler.listeners(rc) //unfortunately, this is still a 'lossy' operation (creates unused rc's)
+        filterEvents ++= handler.filterEvents(rc) //unfortunately, this is still a 'lossy' operation (creates unused rc's)
       }
 
       if (endpointEvent.isDefined)

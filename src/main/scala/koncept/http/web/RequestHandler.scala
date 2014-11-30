@@ -1,64 +1,123 @@
 package koncept.http.web
 
 import koncept.http.web.context.RequestContext
+import koncept.http.web.requestfilter.AcceptsResponse
+import koncept.http.web.requestfilter.FilterResponse
 import koncept.http.web.requestfilter.InboundFilter
 import koncept.http.web.response.WebResponse
 
-trait RequestHandler[R] {
-  var handlers: List[EndpointHandler[R]] = Nil
-  var filters: List[FilterHandler[R]] = Nil
+trait RequestHandler[R] extends EndpointFinder[R] {
+  var handlerChains: List[HandlerChain[R]] = Nil
 
-  def endpoint(rc: RequestContext[R]): Option[EndpointEvent[R]] = {
-    var response: Option[EndpointEvent[R]] = None
-    for (handler <- handlers) yield {
-      if (response.isEmpty) {
-        response = handler.applies(rc)
-      }
-    }
-    response
-  }
-  
-  def listeners(rc: RequestContext[R]): List[FilterEvent[R]] = {
-    var listeners: List[FilterEvent[R]] = Nil
-    for (filter <- filters) {
-      var response = filter.listens(rc)
-      if (response.isDefined) {
-        listeners ::= response.get
-      }
-    }
-    listeners
-  }
+  def endpointEvent(rc: RequestContext[R]): Option[EndpointEvent[R]] = endpointEvent(rc, Map[String, Any]())
 
-  def handle(filters: InboundFilter[R]*): HandlerChain[R] = {
-    new HandlerChain[R](this, null, filters)
-  }
-}
-
-class HandlerChain[R](handler: RequestHandler[R], val parent: HandlerChain[R], val filters: Seq[InboundFilter[R]]) {
-
-  def apply(op: RequestContext[R] => WebResponse): HandlerChain[R] = {
-    handler.handlers ::= new EndpointHandler[R](filters, op)
-    this
-  }
-
-  def apply(filters: InboundFilter[R]*): HandlerChain[R] = new HandlerChain[R](handler, this, filters)
-
-  def apply(filter: () => RequestEventListener[R]): HandlerChain[R] = {
-    handler.filters ::= new FilterHandler[R](filters, filter)
-    this
-  }
-  
-}
-
-class EndpointHandler[R](filters: Seq[InboundFilter[R]], op: RequestContext[R] => WebResponse) {
-  def applies(rc: RequestContext[R]): Option[EndpointEvent[R]] = {
-    for(filter <- filters) {
-        val filterResponse = filter.accepts(rc, Map[String, Any]())
-        if (filterResponse.acceptable)
-          return Some(new EndpointEvent(filterResponse.rc, op))
+  def endpointEvent(rc: RequestContext[R], cache: Map[String, Any]): Option[EndpointEvent[R]] = {
+    var result: Option[EndpointEvent[R]] = None
+    for (handler <- handlerChains) {
+      result = handler.endpointEvent(rc, cache)
+      if (result.isDefined)
+        return result
     }
     None
   }
+
+  def filterEvents(rc: RequestContext[R]): List[FilterEvent[R]] = filterEvents(rc, Map[String, Any]())
+
+  def filterEvents(rc: RequestContext[R], cache: Map[String, Any]): List[FilterEvent[R]] = {
+    var result: List[FilterEvent[R]] = Nil
+    for (handler <- handlerChains) {
+      result ++= handler.filterEvents(rc, cache)
+    }
+    result
+  }
+
+  def handle(filters: InboundFilter[R]*): HandlerChain[R] = {
+    val hc = new HandlerChain[R](filters)
+    handlerChains ::= hc
+    hc
+  }
+
+  def apply(filters: InboundFilter[R]*): HandlerChain[R] = {
+    val hc = new HandlerChain[R](filters)
+    handlerChains ::= hc
+    hc
+  }
+}
+
+class HandlerChain[R](filters: Seq[InboundFilter[R]]) extends EndpointFinder[R] {
+  private var endpointHandlers: List[EndpointFinder[R]] = Nil
+  private var handlerChains: List[EndpointFinder[R]] = Nil
+
+  def endpointEvent(rc: RequestContext[R], cache: Map[String, Any]): Option[EndpointEvent[R]] = {
+    var result: Option[EndpointEvent[R]] = None
+    var filterResponse: FilterResponse[R] = AcceptsResponse(rc, cache);
+    //1: ensure that this handler chain applies
+    for (filter <- filters)
+      if (filterResponse.continuable)
+        filterResponse = filter.accepts(rc, cache)
+
+    //2: On exact match, take any terminal states
+    if (filterResponse.acceptable)
+      for (handler <- endpointHandlers)
+        if (!result.isDefined)
+          result = handler.endpointEvent(filterResponse.rc, cache)
+
+    //3: If no exact match, continue to parse for continuable matches
+    if (filterResponse.continuable && !result.isDefined)
+      for (handler <- handlerChains)
+        if (!result.isDefined)
+          result = handler.endpointEvent(filterResponse.rc, cache)
+
+    result
+  }
+
+  def filterEvents(rc: RequestContext[R], cache: Map[String, Any]): List[FilterEvent[R]] = {
+    var result: List[FilterEvent[R]] = Nil
+    var filterResponse: FilterResponse[R] = AcceptsResponse(rc, cache);
+    //1: ensure that this handler chain applies
+    for (filter <- filters)
+      if (filterResponse.continuable)
+        filterResponse = filter.accepts(rc, cache)
+
+    //2: add any applicable filter events to the list
+    if (filterResponse.acceptable || filterResponse.continuable) {
+      for (handler <- endpointHandlers)
+        result ++= handler.filterEvents(filterResponse.rc, cache)
+      for (handler <- handlerChains)
+        result ++= handler.filterEvents(filterResponse.rc, cache)
+    }
+    result
+  }
+
+  def apply(filters: InboundFilter[R]*): HandlerChain[R] = {
+    val hc = new HandlerChain[R](filters)
+    endpointHandlers ::= hc
+    hc
+  }
+
+  def apply(op: RequestContext[R] => WebResponse) {
+    endpointHandlers ::= new EndpointHandler[R](op)
+  }
+
+  def apply(filter: () => RequestEventListener[R]) {
+    endpointHandlers ::= new FilterHandler[R](filter)
+  }
+
+  def apply(rh: RequestHandler[R]) {
+    handlerChains ::= rh
+  }
+}
+
+trait EndpointFinder[R] {
+  def endpointEvent(rc: RequestContext[R], cache: Map[String, Any]): Option[EndpointEvent[R]]
+  def filterEvents(rc: RequestContext[R], cache: Map[String, Any]): List[FilterEvent[R]]
+}
+
+class EndpointHandler[R](op: RequestContext[R] => WebResponse) extends EndpointFinder[R] {
+  def endpointEvent(rc: RequestContext[R], cache: Map[String, Any]): Option[EndpointEvent[R]] =
+    Some(new EndpointEvent(rc, op))
+  def filterEvents(rc: RequestContext[R], cache: Map[String, Any]): List[FilterEvent[R]] =
+    Nil
 }
 
 class EndpointEvent[R](val rc: RequestContext[R], op: RequestContext[R] => WebResponse) {
@@ -67,15 +126,9 @@ class EndpointEvent[R](val rc: RequestContext[R], op: RequestContext[R] => WebRe
   }
 }
 
-class FilterHandler[R](filters: Seq[InboundFilter[R]], filter: () => RequestEventListener[R]) {
-  def listens(rc: RequestContext[R]): Option[FilterEvent[R]] = {
-    for(requestFilter <- filters) {
-      val filterResponse = requestFilter.accepts(rc, Map[String, Any]())
-      if (filterResponse.acceptable)
-        return Some(new FilterEvent(filter))
-    } 
-    None
-  }
+class FilterHandler[R](filter: () => RequestEventListener[R]) extends EndpointFinder[R] {
+  def endpointEvent(rc: RequestContext[R], cache: Map[String, Any]): Option[EndpointEvent[R]] = None
+  def filterEvents(rc: RequestContext[R], cache: Map[String, Any]): List[FilterEvent[R]] = List(new FilterEvent(filter))
 }
 
 class FilterEvent[R](filter: () => RequestEventListener[R]) {
@@ -83,7 +136,6 @@ class FilterEvent[R](filter: () => RequestEventListener[R]) {
     filter()
   }
 }
-
 
 
 

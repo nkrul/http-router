@@ -5,7 +5,7 @@ import org.scalatest.FlatSpec
 class RequestHandlerTest extends FlatSpec {
 
   "A RequestHandler" should "be created with empty handlers" in {
-    assert(new RH().handlers.isEmpty)
+    assert(new RH().handlerChains.isEmpty)
   }
   
   it should "be able to create multiple handler chains" in {

@@ -4,14 +4,17 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.URI
+
 import scala.collection.JavaConversions.mapAsJavaMap
+
 import org.scalatest.FlatSpec
+
 import koncept.http.server.ConfigurationOption
 import koncept.http.server.exchange.HttpExchangeImpl
-import koncept.http.web.context.RequestContext
-import koncept.io.StreamingSocketConnection
 import koncept.http.web.RequestHandler
+import koncept.http.web.context.RequestContext
 import koncept.http.web.response.WebResponse
+import koncept.io.StreamingSocketConnection
 
 class InboundFilterTest extends FlatSpec {
 
@@ -20,9 +23,9 @@ class InboundFilterTest extends FlatSpec {
   }
 
   it should "not match any other content" in {
-    assert(!accepts("/content", UrlFilter("/")))
-    assert(!accepts("/content2/", UrlFilter("/")))
-    assert(!accepts("/deep/content", UrlFilter("/")))
+    assert(! accepts("/content", UrlFilter("/")))
+    assert(! accepts("/content2/", UrlFilter("/")))
+    assert(! accepts("/deep/content", UrlFilter("/")))
   }
 
   "A UrlFilter(/*)" should "match the root url" in {
@@ -35,8 +38,8 @@ class InboundFilterTest extends FlatSpec {
   }
 
   it should "not match any deep urls content" in {
-    assert(!accepts("/deep/content", UrlFilter("/*")))
-    assert(!accepts("/more_stuff/", UrlFilter("/*")))
+    assert(! accepts("/deep/content", UrlFilter("/*")))
+    assert(! accepts("/more_stuff/", UrlFilter("/*")))
   }
 
   "A UrlFilter(/**)" should "match the root url" in {
@@ -53,16 +56,25 @@ class InboundFilterTest extends FlatSpec {
     assert(accepts("/more_content/", UrlFilter("/**")))
   }
 
-  "A UrlFilter(/static)" should "match the root url" in {
+  "A UrlFilter(/static)" should "not match the url prefix" in {
+    assert(! accepts("/", UrlFilter("/static")))
+  }
+  
+  it should "match the url prefix" in {
     assert(accepts("/static", UrlFilter("/static")))
   }
 
+  it should "not match a different url prefix" in {
+    assert(! accepts("/other", UrlFilter("/static")))
+  }
+  
   it should "not match any nested content" in {
     assert(! accepts("/static", UrlFilter("/static/")))
     assert(! accepts("/static", UrlFilter("/static/other")))
     assert(! accepts("/static", UrlFilter("/static ")))
     assert(! accepts("/static", UrlFilter("/staticother")))
   }
+  
 
   "A UrlFilter(/@varName)" should " match the root url" in {
     val r = result("/", UrlFilter("/@varName"))
@@ -99,12 +111,12 @@ class InboundFilterTest extends FlatSpec {
     var rc = new RequestContext[Any](exchange, null, null)
 
     var rh = new RequestHandler[Any] {
-      handle(filter)((request: RequestContext[Any]) => {
+      handle(filter)  ((request: RequestContext[Any]) => {
         new WebResponse(500)
       })
     }
-
-    var endpoint = rh.endpoint(rc)
+    
+    var endpoint = rh.endpointEvent(rc)
     if (endpoint.isDefined)
       Some(endpoint.get.rc)
     else

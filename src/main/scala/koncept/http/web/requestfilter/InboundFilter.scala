@@ -95,7 +95,9 @@ class StaticUrlFragmentFilter[R](fragment: String) extends InboundFilter[R] with
   def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
     if (head(url(rc, cache)).equals(fragment)) {
       val remainingUrl = tail(url(rc, cache))
-      AcceptsResponse(new RequestContext(rc, ("**" -> remainingUrl)), url(cache, remainingUrl))
+      AcceptsResponse(
+          new RequestContext(rc, ("**" -> remainingUrl)),
+          url(cache, remainingUrl))
     } else {
       RejectsResponse[R]
     }
@@ -103,7 +105,9 @@ class StaticUrlFragmentFilter[R](fragment: String) extends InboundFilter[R] with
 }
 class AnyUrl[R]() extends InboundFilter[R] with UrlParsingFunctions[R] {
   def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
-    AcceptsResponse(new RequestContext(rc, ("**" -> url(rc, cache))), url(cache, ""))
+    AcceptsResponse(
+        new RequestContext(rc, ("**" -> url(rc, cache))),
+        url(cache, ""))
   }
 }
 class AnyUrlFragment[R]() extends InboundFilter[R] with UrlParsingFunctions[R] {
@@ -114,7 +118,11 @@ class AnyUrlFragment[R]() extends InboundFilter[R] with UrlParsingFunctions[R] {
 }
 class UrlFragmentAsProperty[R](propertyName: String) extends InboundFilter[R] with UrlParsingFunctions[R] {
   def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
-    AcceptsResponse(new RequestContext(rc, (propertyName -> head(url(rc, cache)))), url(cache, tail(url(rc, cache))))
+    val h = head(url(rc, cache))
+    val t = tail(url(rc, cache))
+    AcceptsResponse(
+        new RequestContext(rc, (propertyName -> head(url(rc, cache)))),
+        url(cache, tail(url(rc, cache))))
   }
 }
 
