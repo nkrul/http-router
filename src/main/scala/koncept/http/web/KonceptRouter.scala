@@ -14,8 +14,14 @@ import koncept.http.web.httpfilter.ParameterFilter
 
 trait KonceptRouter[R] {
   def createPerRequestResources(): RequestResources[R]
-  var sessionMinutesTimeout: Int = 20
   
+  private val dispatcher: HttpRequestDispatcher[R] = new HttpRequestDispatcher(createPerRequestResources)
+  private val authenticator = new SessionCookieAuthenticator
+  
+  def sessionMinutesTimeout(minutesTimeout: Int) {
+    authenticator.minutesTimeout = minutesTimeout
+  }
+
   def apply(handler : RequestHandler[R]) : KonceptRouter[R] = {
     addHandler(handler)
     this
@@ -26,39 +32,40 @@ trait KonceptRouter[R] {
     this
   }
   
-  private var handlers: List[RequestHandler[R]] = Nil
   def addHandler(handler : RequestHandler[R]): Unit = {
-    handlers ::= handler
+    dispatcher.addHandler(handler)
   }
   
-  private var outputHandlers: Map[Int, OutputHandler[R]] = Map()
   def defineHandler(responseCode: Int, handler: OutputHandler[R]) {
-    outputHandlers += (responseCode -> handler)
+    dispatcher.defineHandler(responseCode, handler)
   }
   
-  def start(address: InetSocketAddress = new InetSocketAddress(8080), backlog:Integer = 0, provider: HttpServerProvider = HttpServerProvider.provider()) {
+  def start(address: InetSocketAddress = new InetSocketAddress(8080), backlog:Integer = 0, provider: HttpServerProvider = HttpServerProvider.provider()) : Stopper = {
     val httpServer = provider.createHttpServer(address, backlog)
-    
-    val dispatcher: HttpRequestDispatcher[R] = new HttpRequestDispatcher(createPerRequestResources)
-    for(handler <- handlers)
-      dispatcher.addHandler(handler)
-      
-    for(handlerSpec <- outputHandlers) {
-      dispatcher.defineHandler(handlerSpec._1, handlerSpec._2)
-    }
-    
     val httpContext = httpServer.createContext("/", DispatcherDelegate(dispatcher))
     
-    val authenticator = new SessionCookieAuthenticator(minutesTimeout = sessionMinutesTimeout)
     httpContext.setAuthenticator(authenticator)
     httpContext.getFilters().add(FilterDelegate(new ParameterFilter))
     
-    httpServer.setExecutor(Executors.newCachedThreadPool)
+    val executorService = Executors.newCachedThreadPool
+    
+    httpServer.setExecutor(executorService)
     httpServer.start()
     
     //run session cleanup every minute
     val scheduledThreads = Executors.newScheduledThreadPool(1)
     scheduledThreads.scheduleWithFixedDelay(new SessionCookieAuthenticatorCleaner(authenticator, httpContext), 0, 1, TimeUnit.MINUTES)
+    new Stopper {
+      def stop() {
+        httpServer.stop(1000)
+        executorService.shutdown()
+        scheduledThreads.shutdown()
+      }
+    }
   }
   
+}
+
+trait Stopper {
+  def stop
 }

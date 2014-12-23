@@ -1,126 +1,94 @@
 package koncept.http.web.requestfilter
 
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.InetSocketAddress
-import java.net.URI
-
 import scala.collection.JavaConversions.mapAsJavaMap
 
 import org.scalatest.FlatSpec
 
-import koncept.http.server.ConfigurationOption
-import koncept.http.server.exchange.HttpExchangeImpl
+import koncept.http.io.RequestHandlerUtils
 import koncept.http.web.RequestHandler
 import koncept.http.web.context.RequestContext
 import koncept.http.web.response.WebResponse
-import koncept.io.StreamingSocketConnection
 
-class InboundFilterTest extends FlatSpec {
+class InboundFilterTest extends FlatSpec with RequestHandlerUtils {
 
   "A UrlFilter(/)" should "match the root url" in {
-    assert(accepts("/", UrlFilter("/")))
+    assert(acceptsFilter("/", UrlFilter("/")))
   }
 
   it should "not match any other content" in {
-    assert(! accepts("/content", UrlFilter("/")))
-    assert(! accepts("/content2/", UrlFilter("/")))
-    assert(! accepts("/deep/content", UrlFilter("/")))
+    assert(! acceptsFilter("/content", UrlFilter("/")))
+    assert(! acceptsFilter("/content2/", UrlFilter("/")))
+    assert(! acceptsFilter("/deep/content", UrlFilter("/")))
   }
 
   "A UrlFilter(/*)" should "match the root url" in {
-    assert(accepts("/", UrlFilter("/*")))
+    assert(acceptsFilter("/", UrlFilter("/*")))
   }
 
   it should "match any single depth urls content" in {
-    assert(accepts("/content", UrlFilter("/*")))
-    assert(accepts("/more_content", UrlFilter("/*")))
+    assert(acceptsFilter("/content", UrlFilter("/*")))
+    assert(acceptsFilter("/more_content", UrlFilter("/*")))
   }
 
   it should "not match any deep urls content" in {
-    assert(! accepts("/deep/content", UrlFilter("/*")))
-    assert(! accepts("/more_stuff/", UrlFilter("/*")))
+    assert(! acceptsFilter("/deep/content", UrlFilter("/*")))
+    assert(! acceptsFilter("/more_stuff/", UrlFilter("/*")))
   }
 
   "A UrlFilter(/**)" should "match the root url" in {
-    assert(accepts("/", UrlFilter("/**")))
+    assert(acceptsFilter("/", UrlFilter("/**")))
   }
 
   it should "match any single depth urls content" in {
-    assert(accepts("/content", UrlFilter("/**")))
-    assert(accepts("/more_content", UrlFilter("/**")))
+    assert(acceptsFilter("/content", UrlFilter("/**")))
+    assert(acceptsFilter("/more_content", UrlFilter("/**")))
   }
 
   it should "match any deep urls content" in {
-    assert(accepts("/deep/content", UrlFilter("/**")))
-    assert(accepts("/more_content/", UrlFilter("/**")))
+    assert(acceptsFilter("/deep/content", UrlFilter("/**")))
+    assert(acceptsFilter("/more_content/", UrlFilter("/**")))
   }
 
   "A UrlFilter(/static)" should "not match the url prefix" in {
-    assert(! accepts("/", UrlFilter("/static")))
+    assert(! acceptsFilter("/", UrlFilter("/static")))
   }
   
   it should "match the url prefix" in {
-    assert(accepts("/static", UrlFilter("/static")))
+    assert(acceptsFilter("/static", UrlFilter("/static")))
   }
 
   it should "not match a different url prefix" in {
-    assert(! accepts("/other", UrlFilter("/static")))
+    assert(! acceptsFilter("/other", UrlFilter("/static")))
   }
   
   it should "not match any nested content" in {
-    assert(! accepts("/static", UrlFilter("/static/")))
-    assert(! accepts("/static", UrlFilter("/static/other")))
-    assert(! accepts("/static", UrlFilter("/static ")))
-    assert(! accepts("/static", UrlFilter("/staticother")))
+    assert(! acceptsFilter("/static", UrlFilter("/static/")))
+    assert(! acceptsFilter("/static", UrlFilter("/static/other")))
+    assert(! acceptsFilter("/static", UrlFilter("/static ")))
+    assert(! acceptsFilter("/static", UrlFilter("/staticother")))
   }
   
 
-  "A UrlFilter(/@varName)" should " match the root url" in {
-    val r = result("/", UrlFilter("/@varName"))
-    assert(accepts(r))
-    assert(r.get.parameters.containsKey("varName"))
-    assert(r.get.parameters("varName") == "")
-  }
-
-  "A UrlFilter(/@varName)" should " match and bind a simple url" in {
-    val r = result("/test", UrlFilter("/@varName"))
-    assert(accepts(r))
-    assert(r.get.parameters.containsKey("varName"))
-    assert(r.get.parameters("varName") == "test")
-  }
-
-  def accepts(url: String, filter: UrlFilter[Any]): Boolean = {
-    accepts(result(url, filter))
-  }
-  def accepts(result: Option[RequestContext[Any]]): Boolean = {
-    result.isDefined
-  }
-  def result(url: String, filter: UrlFilter[Any]): Option[RequestContext[Any]] = {
-    val exchangeOptions: Map[ConfigurationOption, String] = Map((HttpExchangeImpl.ATTRIBUTE_SCOPE -> "exchange"))
-    val ssc = new StreamingSocketConnection[Any]() {
-      def localAddress(): InetSocketAddress = null
-      def remoteAddress(): InetSocketAddress = null
-      def in(): InputStream = null
-      def out(): OutputStream = null
-      def setWriteTimeout(writeTimeout: Long) {}
-      def setReadTimeout(readTimeout: Long) {}
-      def close() {}
-    }
-    var exchange = new HttpExchangeImpl(ssc, "HTTP/0.9", "GET", new URI(url), null, exchangeOptions)
-    var rc = new RequestContext[Any](exchange, null, null)
-
+  "A UrlFilter(/@varName)" should "not  match the root url" in {
     var rh = new RequestHandler[Any] {
-      handle(filter)  ((request: RequestContext[Any]) => {
+      handle(UrlFilter("/@varName"))  ((request: RequestContext[Any]) => {
+        new WebResponse(500)
+      })
+    }
+    //@varName should NOT bind the empty string
+    assert(! accepts(result("/", rh)))
+  }
+
+  it should " match and bind a simple url" in {
+    var rh = new RequestHandler[Any] {
+      handle(UrlFilter("/@varName"))  ((request: RequestContext[Any]) => {
         new WebResponse(500)
       })
     }
     
-    var endpoint = rh.endpointEvent(rc)
-    if (endpoint.isDefined)
-      Some(endpoint.get.rc)
-    else
-      None
+    val r = result("/test", rh)
+    assert(accepts(r))
+    assert(r.get.parameters.containsKey("varName"))
+    assert(r.get.parameters("varName") == "test")
   }
-
 }

@@ -9,7 +9,8 @@ import com.sun.net.httpserver.HttpContext
 
 
 
-class SessionCookieAuthenticator(val sessionCookieName: String = "sessionId", val minutesTimeout: Int = 20) extends Authenticator {
+class SessionCookieAuthenticator(val sessionCookieName: String = "sessionId", var minutesTimeout: Int = 20) extends Authenticator {
+  
 
   def login(username: String, realm: String)(implicit exchange: HttpExchange): Session = {
     ensureNoExistingSession

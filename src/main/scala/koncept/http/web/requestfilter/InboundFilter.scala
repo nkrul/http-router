@@ -55,7 +55,7 @@ case class UrlFilter [R] (url: String) extends InboundFilter[R] with UrlParsingF
 
   def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
     var result : FilterResponse[R] = AcceptsResponse(rc, cache);
-    for (fragmentFilter <- fragments) 
+    for (fragmentFilter <- fragments)
       if (result.continuable)
         result = fragmentFilter.accepts(result.rc, result.filterArgs)
     result
@@ -119,6 +119,8 @@ class AnyUrlFragment[R]() extends InboundFilter[R] with UrlParsingFunctions[R] {
 class UrlFragmentAsProperty[R](propertyName: String) extends InboundFilter[R] with UrlParsingFunctions[R] {
   def accepts(rc: RequestContext[R], cache: Map[String, Any]): FilterResponse[R] = {
     val h = head(url(rc, cache))
+    if (h == "")
+      return RejectsResponse[R] //don't bind to EMPTY variables 
     val t = tail(url(rc, cache))
     AcceptsResponse(
         new RequestContext(rc, (propertyName -> head(url(rc, cache)))),
