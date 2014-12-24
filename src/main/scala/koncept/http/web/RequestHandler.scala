@@ -51,12 +51,11 @@ class HandlerChain[R](filters: Seq[InboundFilter[R]]) extends EndpointFinder[R] 
   def endpointEvent(rc: RequestContext[R], cache: Map[String, Any]): Option[EndpointEvent[R]] = {
     var result: Option[EndpointEvent[R]] = None
     var filterResponse: FilterResponse[R] = AcceptsResponse(rc, cache);
-    println("endpointEvent cache1: " + cache + " " + rc.url)
+    
     //1: ensure that this handler chain applies
     for (filter <- filters)
       if (filterResponse.continuable)
         filterResponse = filter.accepts(rc, filterResponse.filterArgs)
-    println("endpointEvent cache2: " + filterResponse.filterArgs)
 
     //2: On exact match, take any terminal states
     if (filterResponse.acceptable)
@@ -67,10 +66,8 @@ class HandlerChain[R](filters: Seq[InboundFilter[R]]) extends EndpointFinder[R] 
     //3: If no exact match, continue to parse for continuable matches
     if (filterResponse.continuable && !result.isDefined)
       for (handler <- handlerChains)
-        if (!result.isDefined) {
-          println("endpointEvent handlerChain passoff: " + filterResponse.filterArgs)
+        if (!result.isDefined)
           result = handler.endpointEvent(filterResponse.rc, filterResponse.filterArgs)
-        }
 
     result
   }
@@ -78,12 +75,11 @@ class HandlerChain[R](filters: Seq[InboundFilter[R]]) extends EndpointFinder[R] 
   def filterEvents(rc: RequestContext[R], cache: Map[String, Any]): List[FilterEvent[R]] = {
     var result: List[FilterEvent[R]] = Nil
     var filterResponse: FilterResponse[R] = AcceptsResponse(rc, cache);
+    
     //1: ensure that this handler chain applies
-    println("filterEvents cache1: " + filterResponse.filterArgs)
     for (filter <- filters)
       if (filterResponse.continuable)
-        filterResponse = filter.accepts(rc, filterResponse.filterArgs)
-    println("filterEvents cache2: " + filterResponse.filterArgs)  
+        filterResponse = filter.accepts(rc, filterResponse.filterArgs)  
 
     //2: add any applicable filter events to the list
     if (filterResponse.acceptable || filterResponse.continuable) {
@@ -142,9 +138,3 @@ class FilterEvent[R](filter: () => RequestEventListener[R]) {
     filter()
   }
 }
-
-
-
-
-
-
